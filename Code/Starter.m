@@ -11,7 +11,7 @@ close all
 Path = '../Dataset/SingleObject/'; 
 SceneNum = 1;
 SceneName = sprintf('%0.3d', SceneNum);
-FrameNum = num2str(1);
+FrameNum = num2str(2);
 
 I = imread([Path,'scene_',SceneName,'/frames/image_',FrameNum,'_rgb.png']);
 ID = imread([Path,'scene_',SceneName,'/frames/image_',FrameNum,'_depth.png']);
