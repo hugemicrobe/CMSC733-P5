@@ -8,15 +8,13 @@ doScaling = false;
 if doScaling
     srcMean = mean(srcPts, 1);
     modelMean = mean(modelPts, 1);
-    avgMean = 0.5 * (srcMean + modelMean);
+    
     srcPts = bsxfun(@minus, srcPts, srcMean);
     modelPts = bsxfun(@minus, modelPts, modelMean);
     
     avgDist = 0.5 * (sum(sqrt(sum(srcPts.^2, 2))) + sum(sqrt(sum(modelPts.^2, 2))));
     
-    maxDist = max([sqrt(sum(srcPts.^2, 2)); sqrt(sum(modelPts.^2, 2))]);
-
-    scale = 1 / maxDist;
+    scale = n / avgDist;
     srcPts = srcPts * scale;
     modelPts = modelPts * scale;
 end

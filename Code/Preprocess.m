@@ -1,17 +1,47 @@
 clear; clc
 
+% 0:Single 1:Multiple
+mode = 0;
+SceneNum = 23;
+
+
 addpath('./ICP/');
 
-Path = '../Dataset/SingleObject/'; 
-SceneNum = 1;
+
+if mode == 0
+    Path = '../Dataset/SingleObject/';
+    saveName = 'single_scene_'; 
+else
+    Path = '../Dataset/MultipleObjects/';
+    saveName = 'multiple_scene_';
+end    
+
 SceneName = sprintf('%0.3d', SceneNum);
 
 FramePath = dir([Path, 'scene_', SceneName, '/frames/*_rgb.png']);
 DepthPath = dir([Path, 'scene_', SceneName, '/frames/*_depth.png']);
 
-nPointClouds = max(length(FramePath), length(FramePath));
+frameNum = zeros(1, length(FramePath));
+for i = 1:length(FramePath)
+    frameName = FramePath(i).name;
+    tokens = strsplit(frameName, '_');
+    frameNum(i) = str2num(tokens{2});
+end
+
+depthNum = zeros(1, length(DepthPath));
+for i = 1:length(DepthPath)
+    depthName = DepthPath(i).name;
+    tokens = strsplit(depthName, '_');
+    depthNum(i) = str2num(tokens{2}); 
+end
+
+pcNumbers = intersect(frameNum, depthNum);
+
+nPointClouds = numel(pcNumbers);
 
 ptCloudList = cell(1, nPointClouds);
+tableModelList = cell(1, nPointClouds);
+wallModelList = cell(1, nPointClouds);
 distributionList = cell(1, nPointClouds);
 sampleList = cell(1, nPointClouds);
 
@@ -22,12 +52,12 @@ end
 % parse image and depth files into point cloud objects
 parfor i = 1:nPointClouds
 
-%     if mod(i, 3) ~= 1
-%         continue;
-%     end
+    if mod(i, 2) ~= 1
+        continue;
+    end
 
-    framefile = [Path, 'scene_', SceneName, '/frames/image_', num2str(i-1),'_rgb.png'];
-    depthfile = [Path, 'scene_', SceneName, '/frames/image_', num2str(i-1),'_depth.png'];
+    framefile = [Path, 'scene_', SceneName, '/frames/frame_', num2str(pcNumbers(i)),'_rgb.png'];
+    depthfile = [Path, 'scene_', SceneName, '/frames/frame_', num2str(pcNumbers(i)),'_depth.png'];
     
     if exist(framefile, 'file') && exist(depthfile, 'file')
     
@@ -72,8 +102,8 @@ parfor i = 1:nPointClouds
         % keep more points of the objects using smaller threshold (0.005)
         % and remove points that are not in the estimated depth
         % =================================================================
-        [~, inliers_1] = fitPlaneRANSAC(pts, 500, 0.005); 
-        [~, inliers_2] = fitPlaneRANSAC(pts(~inliers_1, :), 500, 0.05);
+        [tableModelList{i}, inliers_1] = fitPlaneRANSAC(pts, 500, 0.05); 
+        [wallModelList{i}, inliers_2] = fitPlaneRANSAC(pts(~inliers_1, :), 500, 0.05);
         inliers_1(~inliers_1) = inliers_2;
         
         % compute distance to the origin in x-y coordinates
@@ -99,50 +129,9 @@ end
 
 % remove empty cells
 ptCloudList = ptCloudList(~cellfun('isempty', ptCloudList));
+tableModelList = tableModelList(~cellfun('isempty', tableModelList));
+wallModelList = wallModelList(~cellfun('isempty', wallModelList));
 distributionList = distributionList(~cellfun('isempty', distributionList));
 sampleList = sampleList(~cellfun('isempty', sampleList));
-nPointClouds = numel(ptCloudList);
 
-
-tformList = cell(1, nPointClouds-1);
-mseList = zeros(1, nPointClouds-1);
-
-% compute transformation for pairs of pointclouds
-parfor i = 2:nPointClouds
-    gridSize = 0.1;
-    fixed = ptCloudList{i-1};
-    moving = ptCloudList{i};
-%     fixed = pcdownsample(ptCloudList{i-1}, 'gridAverage', gridSize);
-%     moving = pcdownsample(ptCloudList{i}, 'gridAverage', gridSize);
-%      fixed = pcdownsample(ptCloudList{i-1}, 'random', 0.8);
-%      moving = pcdownsample(ptCloudList{i}, 'random', 0.8);
-      
-    %[tformList{i-1}, ~, mseList(i-1)] = pcregrigid(moving, fixed, 'Metric', 'pointToPlane', 'Extrapolate', false, 'InlierRatio', 0.8);
-    %[tformList{i-1}, mseList(i-1)] = efficientICP(moving.Location, fixed.Location, 'Extrapolate', false, 'InlierRatio', 0.9, 'MaxIterations', 60);
-    [tformList{i-1}, mseList(i-1)] = icpMultiScale(moving.Location, fixed.Location);
-    
-    i
-end    
-
-
-% compute accumulated transform and merge point clouds
-mergeSize = 0.015;
-accumTform = affine3d();
-ptCloudScene = ptCloudList{1};
-
-for i = 2:nPointClouds    
-    ptCloudCurrent = ptCloudList{i};
-
-    accumTform = affine3d(tformList{i-1}.T * accumTform.T);
-        
-    ptCloudAligned = pctransform(ptCloudCurrent, accumTform);
-
-    % Update the world scene.
-    ptCloudScene = pcmerge(ptCloudScene, ptCloudAligned, mergeSize); 
-        
-    i
-end 
-
-ptCloudScene = pctransform(ptCloudScene, affine3d([1 0 0 0; 0 0 -1 0; 0 1 0 0; 0 0 0 1]));
-figure;
-showPointCloud(ptCloudScene);
+save(['../Results/', saveName, SceneName, '.mat'], 'ptCloudList', 'tableModelList', 'wallModelList');
